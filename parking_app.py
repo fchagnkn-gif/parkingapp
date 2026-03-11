@@ -3,12 +3,13 @@ import streamlit as st
 import pandas as pd
 import datetime
 import random
+import pydeck as pdk
 
 st.set_page_config(page_title="ParkoPrévision", layout="wide")
-st.title("🚗 ParkoPrévision - Prototype")
+st.title("🚗 ParkoPrévision - Prototype Amélioré")
 
 # -----------------------------
-# Données simulées de stationnement (plus de zones)
+# Zones et places totales (fixes)
 # -----------------------------
 zones = [
     {"Zone": "Plateau", "Lat": 45.525, "Lon": -73.5817, "Prix": 3.5, "Places_totales": 20},
@@ -28,29 +29,58 @@ zones = [
     {"Zone": "Pointe-Claire", "Lat": 45.4500, "Lon": -73.7560, "Prix": 2.5, "Places_totales": 12},
 ]
 
-# Ajouter Places libres simulées
+# -----------------------------
+# Simuler Places libres et probabilité
+# -----------------------------
 for z in zones:
-    # Places libres entre 10% et 100% des places totales
-    z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
+    # Génère aléatoirement les places libres entre 10% et 100% des places totales
+    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
+    z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
 
 parking_data = pd.DataFrame(zones)
+
+# Couleur pour la carte : rouge = faible probabilité, vert = haute
+def color_from_proba(p):
+    r = int(255*(1-p))
+    g = int(255*p)
+    return [r,g,0]
+
+parking_data["Color"] = parking_data["Proba_libre"].apply(color_from_proba)
 
 # -----------------------------
 # Carte
 # -----------------------------
-st.subheader("Carte des zones de stationnement")
-st.map(parking_data.rename(columns={"Lat":"lat", "Lon":"lon"}))
+st.subheader("Carte des zones de stationnement (probabilité de place libre)")
+
+layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=parking_data,
+    get_position=["Lon","Lat"],
+    get_fill_color="Color",
+    get_radius=120,
+    pickable=True
+)
+
+view_state = pdk.ViewState(
+    latitude=45.52,
+    longitude=-73.57,
+    zoom=11,
+    pitch=0
+)
+
+r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip="{Zone}\nProbabilité libre : {Proba_libre}")
+st.pydeck_chart(r)
 
 # -----------------------------
-# Tableau des zones
+# Tableau enrichi
 # -----------------------------
 st.subheader("Résumé des zones de stationnement")
-st.dataframe(parking_data[["Zone","Prix","Places_libres","Places_totales"]].rename(
-    columns={"Prix":"Prix ($/h)", "Places_libres":"Places libres", "Places_totales":"Places totales"}
-))
+parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
+parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
+st.dataframe(parking_data_display.rename(columns={"Prix":"Prix ($/h)", "Places_libres":"Places libres", "Places_totales":"Places totales"}))
 
 # -----------------------------
-# Choix de zone
+# Sélection de zone
 # -----------------------------
 st.subheader("Choisir une zone")
 zone = st.selectbox("Zone de stationnement", parking_data["Zone"])
@@ -58,13 +88,12 @@ zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
 
 st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
 st.write(f"🅿️ Places libres : {zone_info['Places_libres']} / {zone_info['Places_totales']}")
+st.write(f"📊 Probabilité de trouver une place : {round(zone_info['Proba_libre']*100)} %")
 
 # -----------------------------
 # Prévision de disponibilité
 # -----------------------------
 st.subheader("Prévision de disponibilité (simulation)")
-
-# On simule une prévision à 1h
 tendance = random.choice(["stable", "plus de places", "moins de places"])
 st.write(f"Dans 1h, la tendance sera : **{tendance}**")
 
@@ -109,7 +138,7 @@ if st.session_state.fin_stationnement:
         st.success("Temps ajouté !")
 
 # -----------------------------
-# Simulation de paiement
+# Paiement
 # -----------------------------
 st.subheader("Paiement")
 if st.button("💳 Payer"):
