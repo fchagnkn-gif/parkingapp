@@ -4,9 +4,10 @@ import pandas as pd
 import datetime
 import random
 import pydeck as pdk
+import numpy as np
 
-st.set_page_config(page_title="ParkoPrévision - Heatmap fluide", layout="wide")
-st.title("🚗 ParkoPrévision - Prototype avec Heatmap fluide")
+st.set_page_config(page_title="ParkoPrévision - Heatmap continu", layout="wide")
+st.title("🚗 ParkoPrévision - Prototype Heatmap continue")
 
 # -----------------------------
 # Zones et places totales
@@ -39,40 +40,58 @@ for z in zones:
 parking_data = pd.DataFrame(zones)
 
 # -----------------------------
-# Pydeck HeatmapLayer
+# Générer des points aléatoires autour des zones pour heatmap fluide
 # -----------------------------
-st.subheader("Carte des zones de stationnement (Heatmap fluide)")
+heat_points = []
+for _, row in parking_data.iterrows():
+    for _ in range(30):  # 30 points autour de chaque zone
+        lat_jitter = row["Lat"] + np.random.normal(scale=0.002)
+        lon_jitter = row["Lon"] + np.random.normal(scale=0.002)
+        heat_points.append({
+            "Lat": lat_jitter,
+            "Lon": lon_jitter,
+            "Proba_libre": row["Proba_libre"]
+        })
+heat_df = pd.DataFrame(heat_points)
 
-layer = pdk.Layer(
+# -----------------------------
+# Heatmap continu
+# -----------------------------
+st.subheader("Carte des zones - Heatmap verte → jaune → rouge")
+
+heat_layer = pdk.Layer(
     "HeatmapLayer",
-    data=parking_data,
+    data=heat_df,
     get_position=["Lon","Lat"],
     get_weight="Proba_libre",
     radiusPixels=60,
-    intensity=1,
-    threshold=0.1,
+    intensity=2,
+    threshold=0.05,
+    color_range=[
+        [0,255,0,80],    # vert faible
+        [255,255,0,120], # jaune moyen
+        [255,0,0,180]    # rouge haute densité / probabilité faible
+    ]
 )
 
-# Scatterplot pour cliquer sur les spots
-scatter = pdk.Layer(
+# Scatterplot pour cliquer
+scatter_layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
     get_position=["Lon","Lat"],
-    get_fill_color=[0,128,255,180],
-    get_radius=300,
-    pickable=True,
+    get_fill_color=[0,128,255,200],
+    get_radius=400,
+    pickable=True
 )
 
-view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
-
-# Tooltip comme dictionnaire Python (corrige l'erreur)
 tooltip = {
     "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places libres: {Places_libres} / {Places_totales}<br>Proba libre: {Proba_libre}",
-    "style": {"color":"white"}
+    "style":{"color":"white"}
 }
 
+view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
 r = pdk.Deck(
-    layers=[layer, scatter],
+    layers=[heat_layer, scatter_layer],
     initial_view_state=view_state,
     tooltip=tooltip
 )
@@ -154,4 +173,5 @@ history = pd.DataFrame({
     "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
 })
 st.table(history)
+
 
