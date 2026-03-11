@@ -48,12 +48,12 @@ layer = pdk.Layer(
     data=parking_data,
     get_position=["Lon","Lat"],
     get_weight="Proba_libre",
-    radiusPixels=60,  # taille du "spot" de chaleur
+    radiusPixels=60,
     intensity=1,
     threshold=0.1,
 )
 
-# Ajout d'un ScatterplotLayer pour le tooltip cliquable
+# Scatterplot pour cliquer sur les spots
 scatter = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
@@ -61,11 +61,22 @@ scatter = pdk.Layer(
     get_fill_color=[0,128,255,180],
     get_radius=300,
     pickable=True,
-    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}"
 )
 
 view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
-r = pdk.Deck(layers=[layer, scatter], initial_view_state=view_state)
+
+# Tooltip comme dictionnaire Python (corrige l'erreur)
+tooltip = {
+    "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places libres: {Places_libres} / {Places_totales}<br>Proba libre: {Proba_libre}",
+    "style": {"color":"white"}
+}
+
+r = pdk.Deck(
+    layers=[layer, scatter],
+    initial_view_state=view_state,
+    tooltip=tooltip
+)
+
 st.pydeck_chart(r)
 
 # -----------------------------
@@ -143,5 +154,4 @@ history = pd.DataFrame({
     "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
 })
 st.table(history)
-
 
