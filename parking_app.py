@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
+import datetime
 import random
-import folium
-from streamlit_folium import st_folium
+import pydeck as pdk
 
-st.set_page_config(page_title="ParkoPrévision - Map Zones", layout="wide")
-st.title("🚗 ParkoPrévision - Carte interactive des zones")
+st.set_page_config(page_title="ParkoPrévision - Heatmap", layout="wide")
+st.title("🚗 ParkoPrévision - Prototype avec Heatmap fluide")
 
 # -----------------------------
-# Zones et places totales (fixes)
+# Zones et places totales
 # -----------------------------
 zones = [
     {"Zone": "Plateau", "Lat": 45.525, "Lon": -73.5817, "Prix": 3.5, "Places_totales": 20},
@@ -33,42 +33,114 @@ zones = [
 # Simuler places libres et proba
 # -----------------------------
 for z in zones:
-    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
+    z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
     z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
 
 parking_data = pd.DataFrame(zones)
 
 # -----------------------------
-# Fonction pour couleur (rouge → vert)
+# Heatmap avec Pydeck
 # -----------------------------
+st.subheader("Carte des zones de stationnement (Heatmap)")
+
+# Couleur selon proba : rouge → vert
 def color_from_proba(p):
     r = int(255*(1-p))
     g = int(255*p)
-    return f"#{r:02x}{g:02x}00"
+    return [r, g, 0]
+
+layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=parking_data,
+    get_position=["Lon", "Lat"],
+    get_fill_color=[color_from_proba(p) for p in parking_data["Proba_libre"]],
+    get_radius=300,
+    pickable=True,
+    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}",
+)
+
+view_state = pdk.ViewState(
+    latitude=45.52,
+    longitude=-73.57,
+    zoom=11,
+    pitch=0,
+)
+
+r = pdk.Deck(layers=[layer], initial_view_state=view_state)
+st.pydeck_chart(r)
 
 # -----------------------------
-# Carte folium
+# Tableau résumé
 # -----------------------------
-m = folium.Map(location=[45.52, -73.57], zoom_start=11)
-
-for _, row in parking_data.iterrows():
-    folium.CircleMarker(
-        location=[row["Lat"], row["Lon"]],
-        radius=30,
-        color=color_from_proba(row["Proba_libre"]),
-        fill=True,
-        fill_color=color_from_proba(row["Proba_libre"]),
-        fill_opacity=0.6,
-        popup=folium.Popup(f"<b>{row['Zone']}</b><br>Prix: {row['Prix']}$ /h<br>Places libres: {row['Places_libres']} / {row['Places_totales']}<br>Proba: {round(row['Proba_libre']*100)}%", max_width=300)
-    ).add_to(m)
-
-# Affiche carte dans Streamlit
-st_folium(m, width=700, height=500)
-
-# -----------------------------
-# Tableau
-# -----------------------------
-st.subheader("Résumé des zones")
+st.subheader("Résumé des zones de stationnement")
 parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
 parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
-st.dataframe(parking_data_display.rename(columns={"Prix":"Prix ($/h)","Places_libres":"Places libres","Places_totales":"Places totales"}))
+st.dataframe(parking_data_display.rename(columns={
+    "Prix":"Prix ($/h)",
+    "Places_libres":"Places libres",
+    "Places_totales":"Places totales"
+}))
+
+# -----------------------------
+# Choix zone et durée
+# -----------------------------
+st.subheader("Choisir une zone et durée")
+zone = st.selectbox("Zone de stationnement", parking_data["Zone"])
+zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
+
+st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
+st.write(f"🅿️ Places libres : {zone_info['Places_libres']} / {zone_info['Places_totales']}")
+
+duree = st.slider("Durée du stationnement (minutes)", 15, 180, 60)
+prix_total = zone_info["Prix"]*(duree/60)
+st.write(f"💵 Prix estimé : {round(prix_total,2)} $")
+
+# -----------------------------
+# Commencer stationnement
+# -----------------------------
+if "fin_stationnement" not in st.session_state:
+    st.session_state.fin_stationnement = None
+
+if st.button("▶️ Commencer le stationnement"):
+    st.session_state.fin_stationnement = datetime.datetime.now() + datetime.timedelta(minutes=duree)
+    st.success("Stationnement activé !")
+
+# -----------------------------
+# Timer
+# -----------------------------
+if st.session_state.fin_stationnement:
+    restant = st.session_state.fin_stationnement - datetime.datetime.now()
+    minutes_restantes = int(restant.total_seconds()/60)
+    st.subheader("⏱ Stationnement actif")
+    if minutes_restantes>0:
+        st.metric("Temps restant (minutes)", minutes_restantes)
+        if minutes_restantes<10:
+            st.warning("⚠️ Stationnement expire bientôt !")
+    else:
+        st.error("⛔ Stationnement expiré")
+
+# -----------------------------
+# Extension
+# -----------------------------
+if st.session_state.fin_stationnement:
+    if st.button("➕ Ajouter 30 minutes"):
+        st.session_state.fin_stationnement += datetime.timedelta(minutes=30)
+        st.success("Temps ajouté !")
+
+# -----------------------------
+# Simulation paiement
+# -----------------------------
+st.subheader("Paiement")
+if st.button("💳 Payer"):
+    st.success("Paiement simulé réussi ✅")
+
+# -----------------------------
+# Historique
+# -----------------------------
+st.subheader("Historique (simulation)")
+history = pd.DataFrame({
+    "Zone":[z["Zone"] for z in zones[:5]],
+    "Durée":["60 min","45 min","90 min","30 min","120 min"],
+    "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
+})
+st.table(history)
