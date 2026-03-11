@@ -5,11 +5,11 @@ import datetime
 import random
 import pydeck as pdk
 
-st.set_page_config(page_title="ParkoPrévision - Quartiers", layout="wide")
-st.title("🚗 ParkoPrévision - Prototype Heatmap Quartiers")
+st.set_page_config(page_title="ParkoPrévision - Heatmap fluide", layout="wide")
+st.title("🚗 ParkoPrévision - Heatmap Quartiers Montréal")
 
 # -----------------------------
-# Zones / Quartiers (ajout de nouvelles zones pour couvrir toute la ville)
+# Zones / Quartiers avec nouvelles zones
 # -----------------------------
 zones = [
     {"Zone": "Plateau", "Lat": 45.525, "Lon": -73.5817, "Prix": 3.5, "Places_totales": 20},
@@ -35,7 +35,7 @@ zones = [
 ]
 
 # -----------------------------
-# Simuler places libres et proba
+# Simuler places libres et probabilité
 # -----------------------------
 for z in zones:
     z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
@@ -44,53 +44,49 @@ for z in zones:
 parking_data = pd.DataFrame(zones)
 
 # -----------------------------
-# Polygones approximatifs pour chaque quartier
-# -----------------------------
-def create_polygon(lat, lon, size=0.004):
-    """Crée un carré approximatif autour du centre"""
-    return [
-        [lon - size, lat - size],
-        [lon - size, lat + size],
-        [lon + size, lat + size],
-        [lon + size, lat - size]
-    ]
-
-parking_data["polygon"] = parking_data.apply(lambda r: create_polygon(r["Lat"], r["Lon"]), axis=1)
-
-# -----------------------------
-# Couleur semi-transparente vert → jaune → rouge
+# Définir couleur pour Scatterplot (RGBA)
 # -----------------------------
 def color_from_proba(p):
     r = int(255*(1-p))
     g = int(255*p)
-    return [r, g, 0, 120]  # alpha 120 pour semi-transparence
+    return [r, g, 0, 180]  # semi-transparent
 
 parking_data["color"] = parking_data["Proba_libre"].apply(color_from_proba)
 
 # -----------------------------
-# Pydeck Layer Polygon
+# Pydeck Heatmap + Scatterplot Layer
 # -----------------------------
-st.subheader("Carte des quartiers - Heatmap")
+st.subheader("Carte Heatmap Quartiers")
 
-layer = pdk.Layer(
-    "PolygonLayer",
+# Scatter pour points cliquables
+scatter = pdk.Layer(
+    "ScatterplotLayer",
     data=parking_data,
-    get_polygon="polygon",
+    get_position=["Lon", "Lat"],
     get_fill_color="color",
+    get_radius=400,  # rayon plus grand
     pickable=True,
     auto_highlight=True,
-    extruded=False,
-    get_line_color=[0,0,0],
+    opacity=0.6
 )
 
-# Pour afficher les places libres sur le hover
+# Heatmap lissé
+heatmap = pdk.Layer(
+    "HeatmapLayer",
+    data=parking_data,
+    get_position=["Lon", "Lat"],
+    get_weight="Proba_libre",
+    radiusPixels=50,
+)
+
+view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11)
+
 tooltip = {
     "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places libres: {Places_libres}/{Places_totales}<br>Proba libre: {Proba_libre}",
     "style": {"backgroundColor": "white", "color": "black"}
 }
 
-view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11)
-r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip)
+r = pdk.Deck(layers=[heatmap, scatter], initial_view_state=view_state, tooltip=tooltip)
 st.pydeck_chart(r)
 
 # -----------------------------
