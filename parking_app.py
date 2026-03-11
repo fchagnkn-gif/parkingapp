@@ -5,7 +5,7 @@ import datetime
 import random
 import pydeck as pdk
 
-st.set_page_config(page_title="ParkoPrévision - Heatmap", layout="wide")
+st.set_page_config(page_title="ParkoPrévision - Heatmap fluide", layout="wide")
 st.title("🚗 ParkoPrévision - Prototype avec Heatmap fluide")
 
 # -----------------------------
@@ -33,37 +33,39 @@ zones = [
 # Simuler places libres et probabilité
 # -----------------------------
 for z in zones:
-    z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
-    z["Proba_libre"] = round(z["Places_libres"] / z["Places_totales"], 2)  # JS-safe float
+    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
+    z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
 
 parking_data = pd.DataFrame(zones)
 
-# Créer colonne 'color' pour Pydeck
-parking_data["color"] = parking_data["Proba_libre"].apply(lambda p: [int(255*(1-p)), int(255*p), 0])
-
 # -----------------------------
-# Heatmap Pydeck (tooltip sûr)
+# Pydeck HeatmapLayer
 # -----------------------------
-st.subheader("Carte des zones de stationnement (Heatmap)")
+st.subheader("Carte des zones de stationnement (Heatmap fluide)")
 
 layer = pdk.Layer(
+    "HeatmapLayer",
+    data=parking_data,
+    get_position=["Lon","Lat"],
+    get_weight="Proba_libre",
+    radiusPixels=60,  # taille du "spot" de chaleur
+    intensity=1,
+    threshold=0.1,
+)
+
+# Ajout d'un ScatterplotLayer pour le tooltip cliquable
+scatter = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
-    get_position=["Lon", "Lat"],
-    get_fill_color="color",
-    get_radius=400,
+    get_position=["Lon","Lat"],
+    get_fill_color=[0,128,255,180],
+    get_radius=300,
     pickable=True,
-    auto_highlight=True,
-    tooltip=[
-        {"text": "Zone: {Zone}"},
-        {"text": "Prix ($/h): {Prix}"},
-        {"text": "Places libres: {Places_libres}/{Places_totales}"},
-        {"text": "Proba libre: {Proba_libre}"}
-    ]
+    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}"
 )
 
 view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
-r = pdk.Deck(layers=[layer], initial_view_state=view_state)
+r = pdk.Deck(layers=[layer, scatter], initial_view_state=view_state)
 st.pydeck_chart(r)
 
 # -----------------------------
@@ -88,7 +90,7 @@ zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
 st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
 st.write(f"🅿️ Places libres : {zone_info['Places_libres']} / {zone_info['Places_totales']}")
 
-duree = st.slider("Durée du stationnement (minutes)", 15, 180, 60)
+duree = st.slider("Durée du stationnement (minutes)", 15,180,60)
 prix_total = zone_info["Prix"]*(duree/60)
 st.write(f"💵 Prix estimé : {round(prix_total,2)} $")
 
@@ -141,4 +143,5 @@ history = pd.DataFrame({
     "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
 })
 st.table(history)
+
 
