@@ -5,8 +5,8 @@ import datetime
 import random
 import pydeck as pdk
 
-st.set_page_config(page_title="ParkoPrévision", layout="wide")
-st.title("🚗 ParkoPrévision - Prototype Amélioré")
+st.set_page_config(page_title="ParkoPrévision Heatmap", layout="wide")
+st.title("🚗 ParkoPrévision - Heatmap des places disponibles")
 
 # -----------------------------
 # Zones et places totales (fixes)
@@ -30,45 +30,49 @@ zones = [
 ]
 
 # -----------------------------
-# Simuler Places libres et probabilité
+# Simuler places libres et proba
 # -----------------------------
 for z in zones:
-    # Génère aléatoirement les places libres entre 10% et 100% des places totales
-    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
+    # On garde les places libres fixes
+    if "Places_libres" not in z:
+        z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
     z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
 
 parking_data = pd.DataFrame(zones)
 
-# Couleur pour la carte : rouge = faible probabilité, vert = haute
-def color_from_proba(p):
-    r = int(255*(1-p))
-    g = int(255*p)
-    return [r,g,0]
-
-parking_data["Color"] = parking_data["Proba_libre"].apply(color_from_proba)
-
 # -----------------------------
-# Carte
+# Heatmap avec HexagonLayer
 # -----------------------------
-st.subheader("Carte des zones de stationnement (probabilité de place libre)")
+st.subheader("Heatmap des zones selon la probabilité de place libre")
 
+# HexagonLayer attend : latitude/longitude et un "weight" (ici proba)
 layer = pdk.Layer(
-    "ScatterplotLayer",
+    "HexagonLayer",
     data=parking_data,
     get_position=["Lon","Lat"],
-    get_fill_color="Color",
-    get_radius=120,
-    pickable=True
+    auto_highlight=True,
+    radius=200,  # rayon hexagone en mètres
+    elevation_scale=50,
+    elevation_range=[0, 1000],
+    pickable=True,
+    extruded=True,
+    coverage=1,
+    get_weight="Proba_libre",  # la proba sert de "hauteur / intensité"
 )
 
 view_state = pdk.ViewState(
     latitude=45.52,
     longitude=-73.57,
     zoom=11,
-    pitch=0
+    pitch=40,
 )
 
-r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip="{Zone}\nProbabilité libre : {Proba_libre}")
+r = pdk.Deck(
+    layers=[layer],
+    initial_view_state=view_state,
+    tooltip="{Zone}\nProba libre : {Proba_libre}"
+)
+
 st.pydeck_chart(r)
 
 # -----------------------------
@@ -78,79 +82,3 @@ st.subheader("Résumé des zones de stationnement")
 parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
 parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
 st.dataframe(parking_data_display.rename(columns={"Prix":"Prix ($/h)", "Places_libres":"Places libres", "Places_totales":"Places totales"}))
-
-# -----------------------------
-# Sélection de zone
-# -----------------------------
-st.subheader("Choisir une zone")
-zone = st.selectbox("Zone de stationnement", parking_data["Zone"])
-zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
-
-st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
-st.write(f"🅿️ Places libres : {zone_info['Places_libres']} / {zone_info['Places_totales']}")
-st.write(f"📊 Probabilité de trouver une place : {round(zone_info['Proba_libre']*100)} %")
-
-# -----------------------------
-# Prévision de disponibilité
-# -----------------------------
-st.subheader("Prévision de disponibilité (simulation)")
-tendance = random.choice(["stable", "plus de places", "moins de places"])
-st.write(f"Dans 1h, la tendance sera : **{tendance}**")
-
-# -----------------------------
-# Durée et prix
-# -----------------------------
-st.subheader("Durée du stationnement")
-duree = st.slider("Choisir la durée (minutes)", 15, 180, 60)
-prix_total = zone_info["Prix"] * (duree/60)
-st.write(f"💵 Prix estimé : {round(prix_total,2)} $")
-
-# -----------------------------
-# Démarrer stationnement
-# -----------------------------
-if "fin_stationnement" not in st.session_state:
-    st.session_state.fin_stationnement = None
-
-if st.button("▶️ Commencer le stationnement"):
-    st.session_state.fin_stationnement = datetime.datetime.now() + datetime.timedelta(minutes=duree)
-    st.success("Stationnement activé !")
-
-# -----------------------------
-# Timer actif
-# -----------------------------
-if st.session_state.fin_stationnement:
-    st.subheader("⏱ Stationnement actif")
-    restant = st.session_state.fin_stationnement - datetime.datetime.now()
-    minutes_restantes = int(restant.total_seconds() / 60)
-    if minutes_restantes > 0:
-        st.metric("Temps restant (minutes)", minutes_restantes)
-        if minutes_restantes < 10:
-            st.warning("⚠️ Stationnement expire bientôt !")
-    else:
-        st.error("⛔ Stationnement expiré")
-
-# -----------------------------
-# Extension
-# -----------------------------
-if st.session_state.fin_stationnement:
-    if st.button("➕ Ajouter 30 minutes"):
-        st.session_state.fin_stationnement += datetime.timedelta(minutes=30)
-        st.success("Temps ajouté !")
-
-# -----------------------------
-# Paiement
-# -----------------------------
-st.subheader("Paiement")
-if st.button("💳 Payer"):
-    st.success("Paiement simulé réussi ✅")
-
-# -----------------------------
-# Historique
-# -----------------------------
-st.subheader("Historique (simulation)")
-history = pd.DataFrame({
-    "Zone":[z["Zone"] for z in zones[:5]],
-    "Durée":["60 min","45 min","90 min","30 min","120 min"],
-    "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
-})
-st.table(history)
