@@ -6,11 +6,11 @@ import random
 import pydeck as pdk
 import numpy as np
 
-st.set_page_config(page_title="ParkoPrévision - Heatmap continu", layout="wide")
-st.title("🚗 ParkoPrévision - Prototype Heatmap continue")
+st.set_page_config(page_title="ParkoPrévision - Mini-zones", layout="wide")
+st.title("🚗 ParkoPrévision - Mini-zones interactives")
 
 # -----------------------------
-# Zones et places totales
+# Zones principales
 # -----------------------------
 zones = [
     {"Zone": "Plateau", "Lat": 45.525, "Lon": -73.5817, "Prix": 3.5, "Places_totales": 20},
@@ -31,147 +31,76 @@ zones = [
 ]
 
 # -----------------------------
-# Simuler places libres et probabilité
+# Créer mini-zones autour de chaque zone
 # -----------------------------
+mini_zones = []
 for z in zones:
-    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
-    z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
-
-parking_data = pd.DataFrame(zones)
-
-# -----------------------------
-# Générer des points aléatoires autour des zones pour heatmap fluide
-# -----------------------------
-heat_points = []
-for _, row in parking_data.iterrows():
-    for _ in range(30):  # 30 points autour de chaque zone
-        lat_jitter = row["Lat"] + np.random.normal(scale=0.002)
-        lon_jitter = row["Lon"] + np.random.normal(scale=0.002)
-        heat_points.append({
+    n_subzones = 6  # 6 mini-zones par zone
+    for i in range(n_subzones):
+        lat_jitter = z["Lat"] + np.random.normal(scale=0.003)
+        lon_jitter = z["Lon"] + np.random.normal(scale=0.003)
+        places_libres = random.randint(0, max(1, z["Places_totales"] // n_subzones))
+        mini_zones.append({
+            "Zone": z["Zone"],
             "Lat": lat_jitter,
             "Lon": lon_jitter,
-            "Proba_libre": row["Proba_libre"]
+            "Prix": z["Prix"],
+            "Places_libres": places_libres,
+            "Places_totales": z["Places_totales"] // n_subzones,
+            "Proba_libre": places_libres / max(1, z["Places_totales"] // n_subzones)
         })
-heat_df = pd.DataFrame(heat_points)
+
+mini_df = pd.DataFrame(mini_zones)
 
 # -----------------------------
 # Heatmap continu
 # -----------------------------
-st.subheader("Carte des zones - Heatmap verte → jaune → rouge")
+st.subheader("Carte interactive - Heatmap + Mini-zones")
 
+# Heatmap basé sur toutes les mini-zones
 heat_layer = pdk.Layer(
     "HeatmapLayer",
-    data=heat_df,
-    get_position=["Lon","Lat"],
+    data=mini_df,
+    get_position=["Lon", "Lat"],
     get_weight="Proba_libre",
-    radiusPixels=60,
+    radiusPixels=80,
     intensity=2,
     threshold=0.05,
     color_range=[
-        [0,255,0,80],    # vert faible
-        [255,255,0,120], # jaune moyen
-        [255,0,0,180]    # rouge haute densité / probabilité faible
+        [0,255,0,80],    # vert
+        [255,255,0,120], # jaune
+        [255,0,0,180]    # rouge
     ]
 )
 
-# Scatterplot pour cliquer
+# Scatterplot pour cliquer et montrer places dispo
 scatter_layer = pdk.Layer(
     "ScatterplotLayer",
-    data=parking_data,
+    data=mini_df,
     get_position=["Lon","Lat"],
     get_fill_color=[0,128,255,200],
-    get_radius=400,
+    get_radius=200,
     pickable=True
 )
 
+# Tooltip avec nombre de places dispo
 tooltip = {
     "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places libres: {Places_libres} / {Places_totales}<br>Proba libre: {Proba_libre}",
     "style":{"color":"white"}
 }
 
 view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
-r = pdk.Deck(
+deck = pdk.Deck(
     layers=[heat_layer, scatter_layer],
     initial_view_state=view_state,
     tooltip=tooltip
 )
-
-st.pydeck_chart(r)
-
-# -----------------------------
-# Tableau résumé
-# -----------------------------
-st.subheader("Résumé des zones de stationnement")
-parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
-parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
-st.dataframe(parking_data_display.rename(columns={
-    "Prix":"Prix ($/h)",
-    "Places_libres":"Places libres",
-    "Places_totales":"Places totales"
-}))
+st.pydeck_chart(deck)
 
 # -----------------------------
-# Choix zone et durée
+# Tableau résumé des zones
 # -----------------------------
-st.subheader("Choisir une zone et durée")
-zone = st.selectbox("Zone de stationnement", parking_data["Zone"])
-zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
-
-st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
-st.write(f"🅿️ Places libres : {zone_info['Places_libres']} / {zone_info['Places_totales']}")
-
-duree = st.slider("Durée du stationnement (minutes)", 15,180,60)
-prix_total = zone_info["Prix"]*(duree/60)
-st.write(f"💵 Prix estimé : {round(prix_total,2)} $")
-
-# -----------------------------
-# Commencer stationnement
-# -----------------------------
-if "fin_stationnement" not in st.session_state:
-    st.session_state.fin_stationnement = None
-
-if st.button("▶️ Commencer le stationnement"):
-    st.session_state.fin_stationnement = datetime.datetime.now() + datetime.timedelta(minutes=duree)
-    st.success("Stationnement activé !")
-
-# -----------------------------
-# Timer
-# -----------------------------
-if st.session_state.fin_stationnement:
-    restant = st.session_state.fin_stationnement - datetime.datetime.now()
-    minutes_restantes = int(restant.total_seconds()/60)
-    st.subheader("⏱ Stationnement actif")
-    if minutes_restantes>0:
-        st.metric("Temps restant (minutes)", minutes_restantes)
-        if minutes_restantes<10:
-            st.warning("⚠️ Stationnement expire bientôt !")
-    else:
-        st.error("⛔ Stationnement expiré")
-
-# -----------------------------
-# Extension
-# -----------------------------
-if st.session_state.fin_stationnement:
-    if st.button("➕ Ajouter 30 minutes"):
-        st.session_state.fin_stationnement += datetime.timedelta(minutes=30)
-        st.success("Temps ajouté !")
-
-# -----------------------------
-# Simulation paiement
-# -----------------------------
-st.subheader("Paiement")
-if st.button("💳 Payer"):
-    st.success("Paiement simulé réussi ✅")
-
-# -----------------------------
-# Historique
-# -----------------------------
-st.subheader("Historique (simulation)")
-history = pd.DataFrame({
-    "Zone":[z["Zone"] for z in zones[:5]],
-    "Durée":["60 min","45 min","90 min","30 min","120 min"],
-    "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
-})
-st.table(history)
-
-
+st.subheader("Résumé par mini-zone")
+mini_display = mini_df[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
+mini_display["Proba_libre (%)"] = (mini_display["Proba_libre"]*100).round(0)
+st.dataframe(mini_display)
