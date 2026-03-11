@@ -38,13 +38,11 @@ for z in zones:
 
 parking_data = pd.DataFrame(zones)
 
-# Créer colonne 'color' pour Pydeck (JS-safe)
-parking_data["color"] = parking_data.apply(
-    lambda row: [int(255*(1-row["Proba_libre"])), int(255*row["Proba_libre"]), 0], axis=1
-)
+# Créer colonne 'color' pour Pydeck
+parking_data["color"] = parking_data["Proba_libre"].apply(lambda p: [int(255*(1-p)), int(255*p), 0])
 
 # -----------------------------
-# Heatmap avec Pydeck
+# Heatmap Pydeck (tooltip sûr)
 # -----------------------------
 st.subheader("Carte des zones de stationnement (Heatmap)")
 
@@ -52,16 +50,16 @@ layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
     get_position=["Lon", "Lat"],
-    get_fill_color="color",  # JS-safe
+    get_fill_color="color",
     get_radius=400,
     pickable=True,
     auto_highlight=True,
-    tooltip="""
-        <b>{Zone}</b><br>
-        Prix: {Prix}$ /h<br>
-        Places libres: {Places_libres} / {Places_totales}<br>
-        Proba libre: {Proba_libre}
-    """
+    tooltip=[
+        {"text": "Zone: {Zone}"},
+        {"text": "Prix ($/h): {Prix}"},
+        {"text": "Places libres: {Places_libres}/{Places_totales}"},
+        {"text": "Proba libre: {Proba_libre}"}
+    ]
 )
 
 view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
@@ -143,3 +141,4 @@ history = pd.DataFrame({
     "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
 })
 st.table(history)
+
