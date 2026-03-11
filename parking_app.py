@@ -38,10 +38,10 @@ for z in zones:
 
 parking_data = pd.DataFrame(zones)
 
-# Ajouter couleurs RGB dans le DataFrame pour Pydeck
-parking_data["R"] = (255*(1-parking_data["Proba_libre"])).astype(int)
-parking_data["G"] = (255*parking_data["Proba_libre"]).astype(int)
-parking_data["B"] = 0
+# Créer colonne 'color' pour Pydeck (fixe JS-safe)
+parking_data["color"] = parking_data.apply(
+    lambda row: [int(255*(1-row["Proba_libre"])), int(255*row["Proba_libre"]), 0], axis=1
+)
 
 # -----------------------------
 # Heatmap avec Pydeck
@@ -52,7 +52,7 @@ layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
     get_position=["Lon", "Lat"],
-    get_fill_color=["R", "G", "B"],
+    get_fill_color="color",  # <- colonne color JS-safe
     get_radius=300,
     pickable=True,
     tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}"
