@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-import datetime
 import random
-import pydeck as pdk
+import folium
+from streamlit_folium import st_folium
 
-st.set_page_config(page_title="ParkoPrévision Heatmap", layout="wide")
-st.title("🚗 ParkoPrévision - Heatmap des places disponibles")
+st.set_page_config(page_title="ParkoPrévision - Map Zones", layout="wide")
+st.title("🚗 ParkoPrévision - Carte interactive des zones")
 
 # -----------------------------
 # Zones et places totales (fixes)
@@ -33,52 +33,42 @@ zones = [
 # Simuler places libres et proba
 # -----------------------------
 for z in zones:
-    # On garde les places libres fixes
-    if "Places_libres" not in z:
-        z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
+    z["Places_libres"] = random.randint(max(1,int(z["Places_totales"]*0.1)), z["Places_totales"])
     z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
 
 parking_data = pd.DataFrame(zones)
 
 # -----------------------------
-# Heatmap avec HexagonLayer
+# Fonction pour couleur (rouge → vert)
 # -----------------------------
-st.subheader("Heatmap des zones selon la probabilité de place libre")
-
-# HexagonLayer attend : latitude/longitude et un "weight" (ici proba)
-layer = pdk.Layer(
-    "HexagonLayer",
-    data=parking_data,
-    get_position=["Lon","Lat"],
-    auto_highlight=True,
-    radius=200,  # rayon hexagone en mètres
-    elevation_scale=50,
-    elevation_range=[0, 1000],
-    pickable=True,
-    extruded=True,
-    coverage=1,
-    get_weight="Proba_libre",  # la proba sert de "hauteur / intensité"
-)
-
-view_state = pdk.ViewState(
-    latitude=45.52,
-    longitude=-73.57,
-    zoom=11,
-    pitch=40,
-)
-
-r = pdk.Deck(
-    layers=[layer],
-    initial_view_state=view_state,
-    tooltip="{Zone}\nProba libre : {Proba_libre}"
-)
-
-st.pydeck_chart(r)
+def color_from_proba(p):
+    r = int(255*(1-p))
+    g = int(255*p)
+    return f"#{r:02x}{g:02x}00"
 
 # -----------------------------
-# Tableau enrichi
+# Carte folium
 # -----------------------------
-st.subheader("Résumé des zones de stationnement")
+m = folium.Map(location=[45.52, -73.57], zoom_start=11)
+
+for _, row in parking_data.iterrows():
+    folium.CircleMarker(
+        location=[row["Lat"], row["Lon"]],
+        radius=30,
+        color=color_from_proba(row["Proba_libre"]),
+        fill=True,
+        fill_color=color_from_proba(row["Proba_libre"]),
+        fill_opacity=0.6,
+        popup=folium.Popup(f"<b>{row['Zone']}</b><br>Prix: {row['Prix']}$ /h<br>Places libres: {row['Places_libres']} / {row['Places_totales']}<br>Proba: {round(row['Proba_libre']*100)}%", max_width=300)
+    ).add_to(m)
+
+# Affiche carte dans Streamlit
+st_folium(m, width=700, height=500)
+
+# -----------------------------
+# Tableau
+# -----------------------------
+st.subheader("Résumé des zones")
 parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
 parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
-st.dataframe(parking_data_display.rename(columns={"Prix":"Prix ($/h)", "Places_libres":"Places libres", "Places_totales":"Places totales"}))
+st.dataframe(parking_data_display.rename(columns={"Prix":"Prix ($/h)","Places_libres":"Places libres","Places_totales":"Places totales"}))
