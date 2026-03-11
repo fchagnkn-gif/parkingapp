@@ -30,7 +30,7 @@ zones = [
 ]
 
 # -----------------------------
-# Simuler places libres et proba
+# Simuler places libres et probabilité
 # -----------------------------
 for z in zones:
     z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
@@ -38,34 +38,27 @@ for z in zones:
 
 parking_data = pd.DataFrame(zones)
 
+# Ajouter couleurs RGB dans le DataFrame pour Pydeck
+parking_data["R"] = (255*(1-parking_data["Proba_libre"])).astype(int)
+parking_data["G"] = (255*parking_data["Proba_libre"]).astype(int)
+parking_data["B"] = 0
+
 # -----------------------------
 # Heatmap avec Pydeck
 # -----------------------------
 st.subheader("Carte des zones de stationnement (Heatmap)")
 
-# Couleur selon proba : rouge → vert
-def color_from_proba(p):
-    r = int(255*(1-p))
-    g = int(255*p)
-    return [r, g, 0]
-
 layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
     get_position=["Lon", "Lat"],
-    get_fill_color=[color_from_proba(p) for p in parking_data["Proba_libre"]],
+    get_fill_color=["R", "G", "B"],
     get_radius=300,
     pickable=True,
-    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}",
+    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}"
 )
 
-view_state = pdk.ViewState(
-    latitude=45.52,
-    longitude=-73.57,
-    zoom=11,
-    pitch=0,
-)
-
+view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
 r = pdk.Deck(layers=[layer], initial_view_state=view_state)
 st.pydeck_chart(r)
 
