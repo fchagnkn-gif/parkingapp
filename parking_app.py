@@ -5,15 +5,15 @@ import datetime
 import random
 import pydeck as pdk
 
-st.set_page_config(page_title="ParkoPrévision - Heatmap fluide", layout="wide")
-st.title("🚗 ParkoPrévision - Heatmap Quartiers Montréal")
+st.set_page_config(page_title="ParkoPrévision - Heatmap Zoomable", layout="wide")
+st.title("🚗 ParkoPrévision - Prototype avec Heatmap fluide et zoomable")
 
 # -----------------------------
-# Zones / Quartiers avec nouvelles zones
+# Zones et places totales
 # -----------------------------
 zones = [
     {"Zone": "Plateau", "Lat": 45.525, "Lon": -73.5817, "Prix": 3.5, "Places_totales": 20},
-    {"Zone": "Centre-ville", "Lat": 45.5017, "Lon": -73.5673, "Prix": 5.0, "Places_totales": 30},
+    {"Zone": "Centre-ville", "Lat": 45.5017, "Lon": -73.5673, "Prix": 5.0, "Places_totales": 30}, 
     {"Zone": "Vieux-Montréal", "Lat": 45.5075, "Lon": -73.5540, "Prix": 6.0, "Places_totales": 15},
     {"Zone": "Mile-End", "Lat": 45.5270, "Lon": -73.5900, "Prix": 3.0, "Places_totales": 25},
     {"Zone": "Griffintown", "Lat": 45.4949, "Lon": -73.5550, "Prix": 4.5, "Places_totales": 18},
@@ -27,11 +27,8 @@ zones = [
     {"Zone": "Villeray", "Lat": 45.5500, "Lon": -73.6200, "Prix": 3.0, "Places_totales": 20},
     {"Zone": "Saint-Henri", "Lat": 45.4750, "Lon": -73.5900, "Prix": 3.5, "Places_totales": 16},
     {"Zone": "Pointe-Claire", "Lat": 45.4500, "Lon": -73.7560, "Prix": 2.5, "Places_totales": 12},
-    # Nouvelles zones pour couverture complète
-    {"Zone": "Senneville", "Lat": 45.4200, "Lon": -73.8500, "Prix": 2.0, "Places_totales": 10},
-    {"Zone": "Saint-Laurent", "Lat": 45.5000, "Lon": -73.7000, "Prix": 2.5, "Places_totales": 25},
-    {"Zone": "Anjou", "Lat": 45.5700, "Lon": -73.5500, "Prix": 2.0, "Places_totales": 18},
-    {"Zone": "Mont-Royal", "Lat": 45.5200, "Lon": -73.6300, "Prix": 3.0, "Places_totales": 12},
+    {"Zone": "Rosemont-Est", "Lat": 45.5550, "Lon": -73.5950, "Prix": 3.2, "Places_totales": 18},
+    {"Zone": "NDG-Nord", "Lat": 45.4750, "Lon": -73.6550, "Prix": 2.1, "Places_totales": 14},
 ]
 
 # -----------------------------
@@ -43,56 +40,60 @@ for z in zones:
 
 parking_data = pd.DataFrame(zones)
 
-# -----------------------------
-# Définir couleur pour Scatterplot (RGBA)
-# -----------------------------
-def color_from_proba(p):
+# Couleurs pour heatmap (vert → jaune → rouge)
+def proba_to_color(p):
     r = int(255*(1-p))
     g = int(255*p)
-    return [r, g, 0, 180]  # semi-transparent
+    return [r,g,0,150]  # semi-transparent
 
-parking_data["color"] = parking_data["Proba_libre"].apply(color_from_proba)
+parking_data["color"] = parking_data["Proba_libre"].apply(proba_to_color)
 
 # -----------------------------
-# Pydeck Heatmap + Scatterplot Layer
+# Pydeck Heatmap + Scatter
 # -----------------------------
-st.subheader("Carte Heatmap Quartiers")
+st.subheader("Carte des zones de stationnement (Zoomable)")
 
-# Scatter pour points cliquables
-scatter = pdk.Layer(
+scatter_layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
-    get_position=["Lon", "Lat"],
+    get_position=["Lon","Lat"],
     get_fill_color="color",
-    get_radius=400,  # rayon plus grand
+    get_radius=200,  # en mètres
+    radius_min_pixels=15,
+    radius_max_pixels=80,
     pickable=True,
     auto_highlight=True,
     opacity=0.6
 )
 
-# Heatmap lissé
-heatmap = pdk.Layer(
+heatmap_layer = pdk.Layer(
     "HeatmapLayer",
     data=parking_data,
-    get_position=["Lon", "Lat"],
+    get_position=["Lon","Lat"],
     get_weight="Proba_libre",
-    radiusPixels=50,
+    radius_pixels=120,
+    intensity=3,
 )
 
-view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11)
+view_state = pdk.ViewState(
+    latitude=45.52, longitude=-73.57, zoom=11, pitch=0
+)
 
-tooltip = {
-    "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places libres: {Places_libres}/{Places_totales}<br>Proba libre: {Proba_libre}",
-    "style": {"backgroundColor": "white", "color": "black"}
-}
+r = pdk.Deck(
+    layers=[heatmap_layer, scatter_layer],
+    initial_view_state=view_state,
+    tooltip={
+        "html": "<b>{Zone}</b><br>Prix: {Prix}$ /h<br>Places: {Places_libres} / {Places_totales}<br>Proba libre: {Proba_libre}",
+        "style": {"color":"white"}
+    }
+)
 
-r = pdk.Deck(layers=[heatmap, scatter], initial_view_state=view_state, tooltip=tooltip)
 st.pydeck_chart(r)
 
 # -----------------------------
 # Tableau résumé
 # -----------------------------
-st.subheader("Résumé des quartiers")
+st.subheader("Résumé des zones de stationnement")
 parking_data_display = parking_data[["Zone","Prix","Places_libres","Places_totales","Proba_libre"]].copy()
 parking_data_display["Proba_libre (%)"] = (parking_data_display["Proba_libre"]*100).round(0)
 st.dataframe(parking_data_display.rename(columns={
@@ -104,8 +105,8 @@ st.dataframe(parking_data_display.rename(columns={
 # -----------------------------
 # Choix zone et durée
 # -----------------------------
-st.subheader("Choisir un quartier et durée")
-zone = st.selectbox("Quartier", parking_data["Zone"])
+st.subheader("Choisir une zone et durée")
+zone = st.selectbox("Zone de stationnement", parking_data["Zone"])
 zone_info = parking_data[parking_data["Zone"]==zone].iloc[0]
 
 st.write(f"💰 Prix : {zone_info['Prix']} $ / heure")
@@ -159,7 +160,7 @@ if st.button("💳 Payer"):
 # -----------------------------
 st.subheader("Historique (simulation)")
 history = pd.DataFrame({
-    "Quartier":[z["Zone"] for z in zones[:5]],
+    "Zone":[z["Zone"] for z in zones[:5]],
     "Durée":["60 min","45 min","90 min","30 min","120 min"],
     "Prix":["3.50$","3.75$","4.50$","2.50$","4.00$"]
 })
