@@ -34,11 +34,11 @@ zones = [
 # -----------------------------
 for z in zones:
     z["Places_libres"] = random.randint(max(1, int(z["Places_totales"]*0.1)), z["Places_totales"])
-    z["Proba_libre"] = z["Places_libres"] / z["Places_totales"]
+    z["Proba_libre"] = round(z["Places_libres"] / z["Places_totales"], 2)  # JS-safe float
 
 parking_data = pd.DataFrame(zones)
 
-# Créer colonne 'color' pour Pydeck (fixe JS-safe)
+# Créer colonne 'color' pour Pydeck (JS-safe)
 parking_data["color"] = parking_data.apply(
     lambda row: [int(255*(1-row["Proba_libre"])), int(255*row["Proba_libre"]), 0], axis=1
 )
@@ -52,10 +52,16 @@ layer = pdk.Layer(
     "ScatterplotLayer",
     data=parking_data,
     get_position=["Lon", "Lat"],
-    get_fill_color="color",  # <- colonne color JS-safe
-    get_radius=300,
+    get_fill_color="color",  # JS-safe
+    get_radius=400,
     pickable=True,
-    tooltip="{Zone}\nPrix: {Prix}$ /h\nPlaces libres: {Places_libres} / {Places_totales}\nProba libre: {Proba_libre}"
+    auto_highlight=True,
+    tooltip="""
+        <b>{Zone}</b><br>
+        Prix: {Prix}$ /h<br>
+        Places libres: {Places_libres} / {Places_totales}<br>
+        Proba libre: {Proba_libre}
+    """
 )
 
 view_state = pdk.ViewState(latitude=45.52, longitude=-73.57, zoom=11, pitch=0)
